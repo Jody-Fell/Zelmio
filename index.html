@@ -112,24 +112,37 @@ function zelmioSavedFact(e,kind){
  kind==='warrantyNumber'?(e.warrantyNumber||e.warrantyReference||e.guaranteeNumber||''):'';
  if(direct)return String(direct).trim();
  const note=[e.note,e.history,e.details].filter(Boolean).join('\n');
+ const datePattern='(\\d{4}-\\d{1,2}-\\d{1,2}|\\d{1,2}[\\/.-]\\d{1,2}[\\/.-]\\d{2,4}|\\d{1,2}\\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\s+\\d{2,4}|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\s+\\d{1,2},?\\s+\\d{4})';
  if(kind==='purchase'){
-  const m=note.match(/(?:purchase(?:d)?(?:\s+date)?|date\s+(?:bought|purchased)|bought(?:\s+on)?|date of purchase)\s*[:#-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{1,2}\s+[A-Za-z]+\s+\d{4})/i);
+  const m=note.match(new RegExp('(?:purchase(?:d)?(?:\\s+date)?|date\\s+(?:bought|purchased)|bought(?:\\s+on)?|date of purchase)\\s*(?:on|:|#|-)?\\s*'+datePattern,'i'));
   return m?m[1].trim():'';
  }
- const label=kind==='warrantyDate'?/(?:warranty\s+(?:expiry|expires|end(?:s)?|until)|guarantee\s+(?:expiry|expires|until))/i:
- /(?:warranty|guarantee)\s*(?:number|no\.?|reference|ref\.?|#)/i;
- const m=note.match(new RegExp(label.source+'\\s*[:#-]?\\s*([^\\n;,]+)','i'));
- return m?m[1].trim().replace(/[. ]+$/,''):'';
+ if(kind==='warrantyNumber'){
+  const m=note.match(/(?:warranty|guarantee)\s*(?:number|no\.?|reference|ref\.?|#)\s*[:#=-]?\s*([A-Z0-9-]*\d[A-Z0-9-]*)/i);
+  return m?m[1].trim():'';
+ }
+ if(kind==='warrantyDate'){
+  // Require the date to be associated with a warranty, not a purchase or receipt.
+  const patterns=[
+   '(?:warranty|guarantee)\\s*(?:expiry|expiration|expires?|expiring|end(?:s|ing)?|valid\\s+until|until|to|date)\\s*(?:date|on|is|:|=|-|the)?\\s*'+datePattern,
+   '(?:warranty|guarantee)[^\\n;.!?]{0,75}?(?:expires?|expiry|expiration|valid\\s+until|ends?|until|to)\\s*(?:on|is|:|=|-)?\\s*'+datePattern,
+   '(?:expires?|expiry|expiration|valid\\s+until|ends?)\\s*(?:on|is|:|=|-)?\\s*'+datePattern+'[^\\n;.!?]{0,45}?(?:warranty|guarantee)',
+   '(?:warranty|guarantee)\\s*[:=-]\\s*'+datePattern
+  ];
+  for(const pat of patterns){const m=note.match(new RegExp(pat,'i'));if(m)return m[1].trim();}
+  return '';
+ }
+ return '';
 }
-// v15: Interpret mixed free-text notes by question, without changing saved records.
+// v16: Extract only relevant location fragments from mixed Extra Notes.
 function zelmioNoteParts(e){
  return String(e.note||'').split(/[\n;]+|(?<=[.!?])\s+/).map(x=>x.trim()).filter(Boolean);
 }
 function zelmioLocationNote(e){
- const place=/\b(shelf|drawer|cupboard|cabinet|under|above|beside|next to|behind|inside|on top|wardrobe|box|storage|left|right|corner|hob|unit|rack|loft|garage|attic|shed|sideboard|table|desk|basket|hook|door|floor|fridge|freezer)\b/i;
- const other=/\b(warranty|guarantee|purchased|purchase|bought|receipt|serial|model|cost|price|paid|expires|expiry|reference|ref\.?|insurance)\b/i;
+ const place=/\b(shelf|drawer|cupboard|cabinet|under|above|over|beside|next to|behind|inside|on top|wardrobe|box|storage|left|right|corner|hob|unit|rack|loft|garage|attic|shed|sideboard|table|desk|basket|hook|door|floor|fridge|freezer|bathroom|bedroom|kitchen|hall|stairs|landing)\b/i;
+ const other=/\b(warranty|guarantee|purchased|purchase|bought|receipt|serial|model|cost|price|paid|expires|expiry|expiration|reference|ref\.?|insurance)\b/i;
  const candidates=zelmioNoteParts(e).flatMap(part=>part.split(/,\s*(?=(?:warranty|guarantee|purchased|purchase|bought|receipt|serial|model|cost|price|paid|expires|expiry|reference)\b)/i));
- const note=candidates.find(part=>place.test(part)&&!other.test(part)&&part.length<=140);
+ const note=candidates.find(part=>place.test(part)&&!other.test(part)&&part.length<=160);
  return note?note.replace(/^(?:location|stored|kept|place|position)\s*[:\-]\s*/i,'').replace(/[,. ]+$/,''):'';
 }
 function zelmioRetailer(e){
@@ -233,7 +246,7 @@ function zelmioReplay(){
 }
 function zelmioToggleSpeech(){zelmioSpeakEnabled=!zelmioSpeakEnabled;localStorage.setItem('zelmio_speak_enabled',String(zelmioSpeakEnabled));if(!zelmioSpeakEnabled&&'speechSynthesis' in window)speechSynthesis.cancel();let b=document.getElementById('zelmioSpeechToggle');if(b)b.textContent=zelmioSpeakEnabled?'🔊 Voice on':'🔇 Voice off';toast(zelmioSpeakEnabled?'Spoken answers on':'Spoken answers off')}
 
-function askPanel(){return `<section class="ask-panel" aria-label="Ask Zelmio"><div class="ask-top"><div><div class="ask-title">✦ Ask Zelmio</div><div class="ask-hint">Maintenance job matching · v15</div></div><div class="ask-voice-controls"><button id="zelmioSpeechToggle" class="ask-voice-toggle" onclick="zelmioToggleSpeech()">${zelmioSpeakEnabled?'🔊 Voice on':'🔇 Voice off'}</button><button class="ask-voice-toggle" onclick="zelmioReplay()" aria-label="Repeat answer">↻</button></div></div><div class="ask-row"><input class="ask-input" id="askQuery" aria-label="Ask about your home" placeholder="Where are my Christmas decorations?" value="${esc(askText)}" oninput="askText=this.value" onkeydown="if(event.key==='Enter')askSubmit()"><button class="ask-mic" aria-label="Ask by voice" title="Ask by voice" onclick="askListen()">🎙</button><button class="ask-send" aria-label="Search my home" onclick="askSubmit()">➜</button></div><div class="ask-chips"><button onclick="askExample('Where is my washing machine?')">🔎 Find something</button><button onclick="askExample('What jobs are due this month?')">🗓 Jobs this month</button><button onclick="askExample('What paint did I use?')">🎨 Paint colours</button><button onclick="askExample('Which warranties expire soon?')">🧾 Warranties</button></div><div id="askResults" class="ask-results" aria-live="polite">${askAnswer}</div></section>`}
+function askPanel(){return `<section class="ask-panel" aria-label="Ask Zelmio"><div class="ask-top"><div><div class="ask-title">✦ Ask Zelmio</div><div class="ask-hint">Maintenance job matching · v16</div></div><div class="ask-voice-controls"><button id="zelmioSpeechToggle" class="ask-voice-toggle" onclick="zelmioToggleSpeech()">${zelmioSpeakEnabled?'🔊 Voice on':'🔇 Voice off'}</button><button class="ask-voice-toggle" onclick="zelmioReplay()" aria-label="Repeat answer">↻</button></div></div><div class="ask-row"><input class="ask-input" id="askQuery" aria-label="Ask about your home" placeholder="Where are my Christmas decorations?" value="${esc(askText)}" oninput="askText=this.value" onkeydown="if(event.key==='Enter')askSubmit()"><button class="ask-mic" aria-label="Ask by voice" title="Ask by voice" onclick="askListen()">🎙</button><button class="ask-send" aria-label="Search my home" onclick="askSubmit()">➜</button></div><div class="ask-chips"><button onclick="askExample('Where is my washing machine?')">🔎 Find something</button><button onclick="askExample('What jobs are due this month?')">🗓 Jobs this month</button><button onclick="askExample('What paint did I use?')">🎨 Paint colours</button><button onclick="askExample('Which warranties expire soon?')">🧾 Warranties</button></div><div id="askResults" class="ask-results" aria-live="polite">${askAnswer}</div></section>`}
 function askExample(q){askText=q;let input=document.getElementById('askQuery');if(input)input.value=q;askSubmit()}
 let zelmioLastAskAt=0;function askSubmit(){if(Date.now()-zelmioLastAskAt<500)return;zelmioLastAskAt=Date.now();let q=(document.getElementById('askQuery')?.value||askText||'').trim();if(!q)return;askText=q;askAnswer=askSearch(q);let box=document.getElementById('askResults');if(box)box.innerHTML=askAnswer;if(zelmioSpeakEnabled)zelmioSpeak(zelmioAnswerSpeech());}
 function zelmioSaveReminder(){
